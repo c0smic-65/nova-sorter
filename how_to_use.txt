@@ -1,0 +1,73 @@
+This will be a short explanation how to use the satellite trail finder:
+If you want to use this yourself you might need to adjust the directories in the files
+
+#####################################################################
+#######################Files#########################################
+#####################################################################
+"hessall.h5" 
+Contains runnumbers, start time in unix and mean zenith angle of runs
+created by "runselector.py".
+
+"flashcam_geometry.txt"
+Assign x and y values for each pixel ID.
+
+"Starlink_launch_dates.CSV"
+Data taken from table on Wikipedia. Needs to be converted to astropy times
+
+"Starlink_launches_from_source.CSV"
+Obtain numbers for each launched satellite train. Table taken from 
+planet4589.org/space/con/star/sats.html
+
+"run_properties.h5"
+Contains datasets for each trail parameter considered. Contains also
+data for runs with no detected trails. 
+
+
+#####################################################################
+#######################ROOT script###################################
+#####################################################################
+
+highpixel_eval_UTC_single.C
+Extracting NSB data from HAP files is done using root with this script
+It writes the pixel ID, time stamp and brightness to a .txt file, if its above 
+a threshold of 900 MHz. Only works properly for Flashcam data.
+
+#####################################################################
+#######################Python scripts################################
+#####################################################################
+
+"runselector.py"
+Creates the above "hessall.h5". Takes only Flashcam observation runs
+longer than 600s with all five telescopes working into account.
+
+"functions_import_essentials.py"
+Contains a lot of functions which are called to evaluate the datasets.
+
+"convert_txt_to_hdf5_and_selection_cut.py"
+Convert the .txt files created by the ROOT script into .h5 files and cut
+data from pixel IDs with more than 100 unique entries (^= 10s illumination)
+
+"highpixel_eval_UTC_single.py" 
+Takes the ROOT script and executes it together with 
+"convert_txt_to_hdf5_and_selection_cut.py" for a chosen run number
+
+
+"get_run_properties.py"
+Gain important run properties and write them to .txt file. Each newline 
+represents another trail. If a run has no trails detected a line is created 
+anyway with "-1" as values for trail properties. 
+
+"get_trail_properites.py"
+Takes the .txt files created by ""get_run_properties.py" and combines them into 
+"run_properties.h5" file.
+
+
+"plot_properties.py"
+Create plots using "run_properties.py".
+
+"single_eval_hillas.py"
+Writes hillas parameter during and away from the trail to file. 
+
+Location of all used Hillasparameter files: 
+"/lfs/l7/hess/users/spencers/realdata/Hillas0510_alldata/"
+
