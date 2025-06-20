@@ -402,19 +402,23 @@ def track_sorter(dict_pix, dict_tmp, dict_brightness, typed_nn_pixels):
     if len(dict_pix) == 0:
         tracks = List([[[-1.], [-1.], [-1.]]])
         possible_meteorites = List([[[-1.], [-1.], [-1.]]])
-        # It is not possible to have neg. values in track, hence if -1, no track was found
+        # No valid tracks if pix list empty
         return tracks, possible_meteorites
 
     pix = list(dict_pix)
     tmp = list(dict_tmp)
     brightness = list(dict_brightness)
     nn_pixels = list(typed_nn_pixels)
+    # Initialize first track
     tracks = List([[[float(pix[0])], [float(tmp[0])], [float(brightness[0])]]])
 
+    # Cluster hits into tracks using spatial adjacency & time window
     for i in range(1, len(pix)):
         appended_to_track = False
         for N in range(len(tracks)):
-            if tmp[i] - 5 < tracks[N][1][-1]:
+            # Widened clustering window: 60 s for slow-evolving sources
+            if tmp[i] - 60 < tracks[N][1][-1]:
+                # Check if current pixel neighbors recent hits
                 if len([x for x in nn_pixels[int(pix[i])] if x in tracks[N][0][-20:]]) > 0:
                     tracks[N][0].append(pix[i])
                     tracks[N][1].append(tmp[i])
@@ -422,67 +426,53 @@ def track_sorter(dict_pix, dict_tmp, dict_brightness, typed_nn_pixels):
                     appended_to_track = True
                     break
         if not appended_to_track:
+            # Start a new track when no adjacency found
             tracks.append([[float(pix[i])], [float(tmp[i])], [float(brightness[i])]])
 
     possible_meteorites = List([[[-1.], [-1.], [-1.]]])
-    to_remove = np.full((1, len(tracks)), -1)[0]
+    to_remove = np.full(len(tracks), -1)
 
+    # Apply filtering cuts for star/nova candidates
     for N in range(len(tracks)):
-        # Discard if the number of unique pixels is greater than 10
-        if len(np.unique(np.array(tracks[N][0]))) > 10:
-            to_remove[N] = N  # Mark this track for removal
-            continue
-        
-        possible_meteorites.append(tracks[N])
-
-        # Checking timing and unique pixel conditions
-        unique_t = np.unique(np.array(tracks[N][1]))
         unique_pix = np.unique(np.array(tracks[N][0]))
-        
-        if len(unique_t) > 1:  # Only proceed if there are more than one unique time
+        unique_t = np.unique(np.array(tracks[N][1]))
+
+        # 1) Spatial-extent cut: no more than 3 unique pixels
+        if len(unique_pix) > 10:
+            to_remove[N] = N
+            continue
+
+        # 2) Temporal-sampling cut: average gap <= 5 s for slow curves
+        if len(unique_t) > 1:
             time_diff = unique_t[1:] - unique_t[:-1]
-            if np.average(time_diff) > 0.3:  # SG: check with different values - update: switched between values in range 0.3-3, didn't really affect the results
-                possible_meteorites.append(tracks[N])
+            if np.average(time_diff) > 5.0:
                 to_remove[N] = N
                 continue
         else:
-            print(f"Skipping track {N} due to insufficient time values.")
-            continue
-
-        # Handle case with large number of unique pixels
-        if len(unique_pix) > 40: # SG: Chnaged from 400 to 40
-            possible_meteorites.append(tracks[N])
+            # Insufficient time points: drop track
             to_remove[N] = N
             continue
 
-        # Velocity cut (ensured that division by zero is prevented)
+        # 3) Large-trail guard: reject tracks spanning >40 pixels
+        if len(unique_pix) > 40:
+            to_remove[N] = N
+            continue
+
+        # 4) Velocity cut: retain near-stationary (<= 0.001 deg/s)
         velo = get_velocity(tracks[N][0], tracks[N][1])
-        if velo > 0.008:  # SG: Change this cut - was < ,changed to >
-            possible_meteorites.append(tracks[N])
+        if velo > 0.002:
             to_remove[N] = N
             continue
 
-    # Clean up possible meteorites list and remove marked tracks
-    del possible_meteorites[0]
-    if len(possible_meteorites) == 0:
-        possible_meteorites = List([[[-1.], [-1.], [-1.]]])
+    # Remove marked tracks in reverse order to preserve indices
+    idxs = to_remove[to_remove != -1]
+    for idx in sorted(idxs, reverse=True):
+        del tracks[int(idx)]
 
-    # Remove tracks that are marked for deletion
-    to_remove = to_remove[to_remove != -1]
-    for i in range(len(to_remove)):
-        del tracks[to_remove[-(i + 1)]]
-
+    # Ensure non-empty output
     if len(tracks) == 0:
         tracks = List([[[-1.], [-1.], [-1.]]])
 
-    return tracks, possible_meteorites
-
-
-
-#Use this instead of track_sorter
-@jit
-def track_sorter_fast(data):
-    tracks, possible_meteorites = track_sorter(data[0], data[1], data[2], typed_nn_pix)
     return tracks, possible_meteorites
 
 
@@ -780,8 +770,8 @@ def plot_total_flux_light_curve(tracks, track_number=0):
         total_flux.append(sum(b_at_t))
     
     # Plotting
-    plt.figure(figsize=(8, 5))
-    plt.plot(unique_times, total_flux, marker='o', linestyle='-')
+    plt.figure(figsize=(10, 4))
+    plt.plot(unique_times, total_flux, linestyle='-')
     plt.xlabel("Time")
     plt.ylabel("Total Flux")
     plt.title(f"Light Curve for Track {track_number}")
@@ -838,8 +828,8 @@ def plot_mean_flux_light_curve(tracks, track_number=0):
         mean_flux.append(np.mean(b_at_t))
     
     # Plotting
-    plt.figure(figsize=(8, 5))
-    plt.plot(unique_times, mean_flux, marker='o', linestyle='-')
+    plt.figure(figsize=(10, 4))
+    plt.plot(unique_times, mean_flux, linestyle='-')
     plt.xlabel("Time")
     plt.ylabel("Mean Flux")
     plt.title(f"Mean-Flux Light Curve for Track {track_number}")
@@ -896,8 +886,8 @@ def plot_median_flux_light_curve(tracks, track_number=0):
         median_flux.append(np.median(b_at_t))
     
     # Plotting
-    plt.figure(figsize=(8, 5))
-    plt.plot(unique_times, median_flux, marker='o', linestyle='-')
+    plt.figure(figsize=(10, 4))
+    plt.plot(unique_times, median_flux, linestyle='-')
     plt.xlabel("Time")
     plt.ylabel("Median Flux")
     plt.title(f"Median-Flux Light Curve for Track {track_number}")
