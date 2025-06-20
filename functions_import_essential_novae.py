@@ -846,6 +846,58 @@ def plot_mean_flux_light_curve(tracks, track_number=0):
 # ]
 # plot_mean_flux_light_curve(tracks)
 
+def plot_binned_flux_light_curve(tracks, track_number=0, time_bin_size=0.5):
+    """
+    Plots the mean-flux light curve for a given track, binned into intervals of width `time_bin_size`.
+    
+    Parameters
+    ----------
+    tracks : list
+        Output from the track sorter function. Each element should be a track represented as
+        [pix_ids, times, brightnesses].
+    track_number : int, optional
+        Index of the track to plot (default is 0).
+    time_bin_size : float, optional
+        Width of the time‐bins (in the same units as `times`), e.g. 0.5 for half‐second bins.
+    """
+    # Validate inputs
+    if not (0 <= track_number < len(tracks)):
+        raise ValueError(f"track_number {track_number} is out of range.")
+    pix_ids, times, brightnesses = tracks[track_number]
+    if len(times) != len(brightnesses):
+        raise ValueError("Length mismatch: 'times' and 'brightnesses' must match.")
+    
+    times = np.array(times)
+    brightnesses = np.array(brightnesses)
+    
+    # Define bin edges from min to max time
+    t_min, t_max = times.min(), times.max()
+    bins = np.arange(t_min, t_max + time_bin_size, time_bin_size)
+    
+    # Digitize times into bins: each time falls into bin index i where bins[i-1] <= t < bins[i]
+    bin_indices = np.digitize(times, bins)
+    
+    # Compute mean flux in each bin
+    binned_time_centers = []
+    binned_flux = []
+    for i in range(1, len(bins)):
+        in_bin = (bin_indices == i)
+        if not np.any(in_bin):
+            # skip empty bins or append NaN
+            continue
+        binned_time_centers.append((bins[i-1] + bins[i]) / 2)
+        binned_flux.append(brightnesses[in_bin].mean())
+    
+    # Plot
+    plt.figure(figsize=(10, 4))
+    plt.plot(binned_time_centers, binned_flux, marker='o', linestyle='-')
+    plt.xlabel("Time")
+    plt.ylabel("Mean Flux")
+    plt.title(f"Binned Mean-Flux Light Curve (Δt = {time_bin_size}s) for Track {track_number}")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
 def plot_median_flux_light_curve(tracks, track_number=0):
     """
     Plots the median-flux light curve for a given track from the track sorter output.
