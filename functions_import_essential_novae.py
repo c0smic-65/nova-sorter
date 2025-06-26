@@ -393,6 +393,81 @@ def plot_brightness_in_track(tracks):
     draw_box()
     return 
 
+## Temp-use- using plotly:
+import plotly.express as px
+def plot_brightness_in_trackly(tracks):
+    """
+    Interactive Plotly scatter of average brightness per pixel in a track.
+    Hover over each hexagon to see its pix_id.
+    """
+    # guard against invalid data
+    if tracks[0][0][0] == -1:
+        print("Invalid data, plot is not done")
+        return
+
+    # collect all data in lists
+    pix_list = []
+    time_list = []
+    bright_list = []
+
+    for pix_ids, times, br in tracks:
+        pix_arr = np.array(pix_ids,    dtype=int)
+        t_arr   = np.array(times,      dtype=float)
+        b_arr   = np.array(br,         dtype=float)
+
+        # normalize time to start of track
+        t_norm = t_arr - t_arr[0]
+
+        pix_list.append(pix_arr)
+        time_list.append(t_norm)
+        bright_list.append(b_arr)
+
+    # concatenate once
+    data_pix    = np.concatenate(pix_list)
+    data_time   = np.concatenate(time_list)
+    data_bright = np.concatenate(bright_list)
+
+    # compute per-pixel averages
+    unique_pix = np.unique(data_pix)
+    x_coords   = []
+    y_coords   = []
+    avg_bright = []
+
+    for pid in unique_pix:
+        mask = data_pix == pid
+        x_coords.append(flash_geom_x[pid])
+        y_coords.append(flash_geom_y[pid])
+        avg_bright.append(data_bright[mask].mean())
+
+    # build DataFrame
+    df = pd.DataFrame({
+        "pix_id":     unique_pix,
+        "x":          x_coords,
+        "y":          y_coords,
+        "brightness": avg_bright
+    })
+
+    # interactive plot
+    fig = px.scatter(
+        df, x="x", y="y",
+        color="brightness",
+        color_continuous_scale="Jet",
+        hover_name="pix_id",
+        labels={
+            "x": "X-Coordinate [m]",
+            "y": "Y-Coordinate [m]",
+            "brightness": "Avg Brightness [MHz]"
+        },
+        title="FlashCam: Average Brightness per Pixel",
+        width=600, height=600
+    )
+    fig.update_traces(marker_symbol="hexagon", marker_size=13)
+    fig.update_layout(
+        yaxis=dict(scaleanchor="x", scaleratio=1),
+        margin=dict(l=40, r=40, t=60, b=40)
+    )
+    fig.show()
+
 #Use track_sorter_fast(data), as it is less tedious to write than this one
 #This produces the list of trails and a list of all the rest
 #The rest also contains meteorites, hence the naming of the variable
@@ -671,7 +746,7 @@ def plot_lightcurve_brightest_track(tracks,
     if ax is None:
         _, ax = plt.subplots(figsize=(6, 4), constrained_layout=True)
 
-    ax.plot(times, brightness, marker="o", lw=1.2, ms=3,
+    ax.plot(times, brightness, lw=1.2, ms=3,
             label=f"Track {idx}")
     ax.set_xlabel("Time in track [s]")
     ax.set_ylabel("Pixel brightness")
@@ -718,7 +793,7 @@ def plot_lightcurve_brightest_track_peak(tracks,
     if ax is None:
         _, ax = plt.subplots(figsize=(6, 4), constrained_layout=True)
 
-    ax.plot(t_unique, b_peak, marker="o", lw=1.2, ms=3,
+    ax.plot(t_unique, b_peak, lw=1.2, ms=3,
             label=f"Track {idx} (peak)")
     ax.set_xlabel("Time in track [s]")
     ax.set_ylabel("Peak pixel brightness")
@@ -729,230 +804,273 @@ def plot_lightcurve_brightest_track_peak(tracks,
     return idx, t_unique, b_peak
 
 
-
-def plot_total_flux_light_curve(tracks, track_number=0):
+def average_lightcurve_brightness(tracks, track_number=0):
     """
-    Plots the total-sum light curve for a given track from the track sorter output.
-    
-    Parameters:
-    -----------
-    tracks : list
-        Output from the track sorter function. Each element should be a track represented as
-        [pix_ids, times, brightnesses], where:
-          - pix_ids: list of pixel IDs (ints or floats)
-          - times: list of timestamps (ints or floats) corresponding to each pixel measurement
-          - brightnesses: list of brightness values (floats) corresponding to each pixel measurement
-    track_number : int, optional
-        Index of the track to plot (default is 0, i.e., the first track).
-    
-    The function groups all brightness measurements at each unique time, sums them to get the total flux,
-    and then plots total flux vs. time.
-    """
-    # Validate track_number
-    if track_number < 0 or track_number >= len(tracks):
-        raise ValueError(f"track_number {track_number} is out of range for the provided tracks.")
-
-    # Unpack the specified track
-    pix_ids, times, brightnesses = tracks[track_number]
-    
-    # Ensure times and brightnesses have the same length
-    if len(times) != len(brightnesses):
-        raise ValueError("Length mismatch: 'times' and 'brightnesses' must be the same length.")
-    
-    # Identify unique timestamps and sort them
-    unique_times = sorted(set(times))
-    
-    # Compute total flux at each timestamp
-    total_flux = []
-    for t in unique_times:
-        # Collect brightnesses at time t
-        b_at_t = [b for tt, b in zip(times, brightnesses) if tt == t]
-        total_flux.append(sum(b_at_t))
-    
-    # Plotting
-    plt.figure(figsize=(10, 4))
-    plt.plot(unique_times, total_flux, linestyle='-')
-    plt.xlabel("Time")
-    plt.ylabel("Total Flux")
-    plt.title(f"Light Curve for Track {track_number}")
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-
-# Example usage (commented out; replace with actual 'tracks' data when available):
-# tracks = [
-#     # Example track: [[pix_ids...], [times...], [brightnesses...]]
-#     ([1, 2, 3, 1, 2], [0.0, 0.0, 0.0, 1.0, 1.0], [10.0, 5.0, 2.0, 8.0, 3.0]),
-#     # Additional tracks...
-# ]
-# plot_total_flux_light_curve(tracks)
-
-def plot_mean_flux_light_curve(tracks, track_number=0):
-    """
-    Plots the mean-flux light curve for a given track from the track sorter output.
-    
-    Parameters:
-    -----------
-    tracks : list
-        Output from the track sorter function. Each element should be a track represented as
-        [pix_ids, times, brightnesses], where:
-          - pix_ids: list of pixel IDs (ints or floats)
-          - times: list of timestamps (ints or floats) corresponding to each pixel measurement
-          - brightnesses: list of brightness values (floats) corresponding to each pixel measurement
-    track_number : int, optional
-        Index of the track to plot (default is 0, i.e., the first track).
-    
-    The function groups all brightness measurements at each unique time, computes their mean
-    to get the mean flux per time, and then plots mean flux vs. time.
-    """
-    # Validate track_number
-    if track_number < 0 or track_number >= len(tracks):
-        raise ValueError(f"track_number {track_number} is out of range for the provided tracks.")
-
-    # Unpack the specified track
-    pix_ids, times, brightnesses = tracks[track_number]
-    
-    # Ensure times and brightnesses have the same length
-    if len(times) != len(brightnesses):
-        raise ValueError("Length mismatch: 'times' and 'brightnesses' must be the same length.")
-    
-    # Identify unique timestamps and sort them
-    unique_times = sorted(set(times))
-    
-    # Compute mean flux at each timestamp
-    mean_flux = []
-    for t in unique_times:
-        # Collect brightnesses at time t
-        b_at_t = [b for tt, b in zip(times, brightnesses) if tt == t]
-        mean_flux.append(np.mean(b_at_t))
-    
-    # Plotting
-    plt.figure(figsize=(10, 4))
-    plt.plot(unique_times, mean_flux, linestyle='-')
-    plt.xlabel("Time")
-    plt.ylabel("Mean Flux")
-    plt.title(f"Mean-Flux Light Curve for Track {track_number}")
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-
-# Example usage (commented out; replace with actual 'tracks' data when available):
-# tracks = [
-#     # Example track: [[pix_ids...], [times...], [brightnesses...]]
-#     ([1, 2, 3, 1, 2], [0.0, 0.0, 0.0, 1.0, 1.0], [10.0, 5.0, 2.0, 8.0, 3.0]),
-#     # Additional tracks...
-# ]
-# plot_mean_flux_light_curve(tracks)
-
-def plot_binned_flux_light_curve(tracks, track_number=0, time_bin_size=0.5):
-    """
-    Plots the mean-flux light curve for a given track, binned into intervals of width `time_bin_size`.
+    For the given track, collapse multiple pixel brightnesses at each timestamp
+    to a single mean, then return the average of those per-timestamp means.
     
     Parameters
     ----------
     tracks : list
-        Output from the track sorter function. Each element should be a track represented as
-        [pix_ids, times, brightnesses].
-    track_number : int, optional
-        Index of the track to plot (default is 0).
-    time_bin_size : float, optional
-        Width of the time‐bins (in the same units as `times`), e.g. 0.5 for half‐second bins.
-    """
-    # Validate inputs
-    if not (0 <= track_number < len(tracks)):
-        raise ValueError(f"track_number {track_number} is out of range.")
-    pix_ids, times, brightnesses = tracks[track_number]
-    if len(times) != len(brightnesses):
-        raise ValueError("Length mismatch: 'times' and 'brightnesses' must match.")
+        Each element is [pix_ids, times, brightnesses].
+    track_number : int
+        Index of the track to process.
     
+    Returns
+    -------
+    float
+        Mean of the per-timestamp mean brightnesses.
+    """
+    _, times, brightnesses = tracks[track_number]
     times = np.array(times)
     brightnesses = np.array(brightnesses)
     
-    # Define bin edges from min to max time
-    t_min, t_max = times.min(), times.max()
-    bins = np.arange(t_min, t_max + time_bin_size, time_bin_size)
+    # Find unique timestamps and map each sample to its timestamp index
+    uniq_times, inv = np.unique(times, return_inverse=True)
     
-    # Digitize times into bins: each time falls into bin index i where bins[i-1] <= t < bins[i]
-    bin_indices = np.digitize(times, bins)
+    # Sum brightnesses per timestamp, and count samples per timestamp
+    sum_by_time   = np.bincount(inv, weights=brightnesses)
+    count_by_time = np.bincount(inv)
     
-    # Compute mean flux in each bin
-    binned_time_centers = []
-    binned_flux = []
-    for i in range(1, len(bins)):
-        in_bin = (bin_indices == i)
-        if not np.any(in_bin):
-            # skip empty bins or append NaN
-            continue
-        binned_time_centers.append((bins[i-1] + bins[i]) / 2)
-        binned_flux.append(brightnesses[in_bin].mean())
+    # Compute per-timestamp mean
+    mean_by_time = sum_by_time / count_by_time
     
-    # Plot
+    # Finally, average those means
+    return float(mean_by_time.mean())
+
+# mean_bright = average_lightcurve_brightness(tracks, track_number=0)
+# print(f"Mean brightness: {mean_bright:.3f}")
+
+
+def plot_total_flux_light_curve(tracks, track_number=0):
+    """
+    Plots total‐sum light curve and prints overall mean brightness.
+    """
+    if not (0 <= track_number < len(tracks)):
+        raise ValueError(f"track_number {track_number} is out of range.")
+
+    _, times, brightnesses = tracks[track_number]
+    if len(times) != len(brightnesses):
+        raise ValueError("Length mismatch: 'times' and 'brightnesses' must match.")
+
+    unique_times = sorted(set(times))
+    total_brightness = [
+        sum(b for t_, b in zip(times, brightnesses) if t_ == t)
+        for t in unique_times
+    ]
+
     plt.figure(figsize=(10, 4))
-    plt.plot(binned_time_centers, binned_flux, marker='o', linestyle='-')
+    plt.plot(unique_times, total_brightness, linestyle='-')
     plt.xlabel("Time")
-    plt.ylabel("Mean Flux")
-    plt.title(f"Binned Mean-Flux Light Curve (Δt = {time_bin_size}s) for Track {track_number}")
+    plt.ylabel("Brightness (MHz)")
+    plt.title(f"Total-Brightness Light Curve for Track {track_number}")
     plt.grid(True)
     plt.tight_layout()
     plt.show()
+
+    mean_bright = average_lightcurve_brightness(tracks, track_number)
+    print(f"Track {track_number} overall mean brightness: {mean_bright:.3f} MHz")
+
+
+
+def plot_binned_total_flux_light_curve(tracks, track_number=0, time_bin_size=0.5):
+    """
+    Plots binned total‐brightness light curve and prints overall mean brightness.
+    """
+    if not (0 <= track_number < len(tracks)):
+        raise ValueError(f"track_number {track_number} is out of range.")
+    _, times, brightnesses = tracks[track_number]
+    times = np.asarray(times)
+    brightnesses = np.asarray(brightnesses)
+    if times.shape != brightnesses.shape:
+        raise ValueError("Length mismatch: 'times' and 'brightnesses' must match.")
+
+    t_min, t_max = times.min(), times.max()
+    bins = np.arange(t_min, t_max + time_bin_size, time_bin_size)
+    idx = np.digitize(times, bins)
+    centers, totals = [], []
+    for i in range(1, len(bins)):
+        mask = idx == i
+        if not mask.any():
+            continue
+        centers.append((bins[i-1] + bins[i]) / 2)
+        totals.append(brightnesses[mask].sum())
+
+    plt.figure(figsize=(10, 4))
+    plt.plot(centers, totals, linestyle='-')
+    plt.xlabel("Time")
+    plt.ylabel("Brightness (MHz)")
+    plt.title(f"Binned Total-Brightness Light Curve (Δt={time_bin_size}) for Track {track_number}")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    mean_bright = average_lightcurve_brightness(tracks, track_number)
+    print(f"Track {track_number} overall mean brightness: {mean_bright:.3f} MHz")
+
+
+
+def plot_mean_flux_light_curve(tracks, track_number=0):
+    """
+    Plots mean‐brightness light curve and prints overall mean brightness.
+    """
+    if not (0 <= track_number < len(tracks)):
+        raise ValueError(f"track_number {track_number} is out of range.")
+    _, times, brightnesses = tracks[track_number]
+    if len(times) != len(brightnesses):
+        raise ValueError("Length mismatch: 'times' and 'brightnesses' must match.")
+
+    unique_times = sorted(set(times))
+    mean_brightness = [
+        np.mean([b for t_, b in zip(times, brightnesses) if t_ == t])
+        for t in unique_times
+    ]
+
+    plt.figure(figsize=(10,4))
+    plt.plot(unique_times, mean_brightness, linestyle='-')
+    plt.xlabel("Time")
+    plt.ylabel("Brightness (MHz)")
+    plt.title(f"Mean-Brightness Light Curve for Track {track_number}")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    mean_bright = average_lightcurve_brightness(tracks, track_number)
+    print(f"Track {track_number} overall mean brightness: {mean_bright:.3f} MHz")
+
+
+
+def plot_binned_mean_flux_light_curve(tracks, track_number=0, time_bin_size=0.1):
+    """
+    Plots binned mean‐brightness light curve and prints overall mean brightness.
+    """
+    if not (0 <= track_number < len(tracks)):
+        raise ValueError(f"track_number {track_number} is out of range.")
+    _, times, brightnesses = tracks[track_number]
+    times = np.array(times)
+    brightnesses = np.array(brightnesses)
+    if times.shape != brightnesses.shape:
+        raise ValueError("Length mismatch: 'times' and 'brightnesses' must match.")
+
+    t_min, t_max = times.min(), times.max()
+    bins = np.arange(t_min, t_max + time_bin_size, time_bin_size)
+    idx = np.digitize(times, bins)
+    centers, means = [], []
+    for i in range(1, len(bins)):
+        mask = idx == i
+        if not mask.any(): 
+            continue
+        centers.append((bins[i-1] + bins[i]) / 2)
+        means.append(brightnesses[mask].mean())
+
+    plt.figure(figsize=(10,4))
+    plt.plot(centers, means, linestyle='-')
+    plt.xlabel("Time")
+    plt.ylabel("Brightness (MHz)")
+    plt.title(f"Binned Mean-Brightness Light Curve (Δt={time_bin_size}) for Track {track_number}")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    mean_bright = average_lightcurve_brightness(tracks, track_number)
+    print(f"Track {track_number} overall mean brightness: {mean_bright:.3f} MHz")
+
+
 
 def plot_median_flux_light_curve(tracks, track_number=0):
     """
-    Plots the median-flux light curve for a given track from the track sorter output.
-    
-    Parameters:
-    -----------
-    tracks : list
-        Output from the track sorter function. Each element should be a track represented as
-        [pix_ids, times, brightnesses], where:
-          - pix_ids: list of pixel IDs (ints or floats)
-          - times: list of timestamps (ints or floats) corresponding to each pixel measurement
-          - brightnesses: list of brightness values (floats) corresponding to each pixel measurement
-    track_number : int, optional
-        Index of the track to plot (default is 0, i.e., the first track).
-    
-    The function groups all brightness measurements at each unique time, computes their median
-    to get the median flux per time, and then plots median flux vs. time.
+    Plots median‐brightness light curve and prints overall mean brightness.
     """
-    # Validate track_number
-    if track_number < 0 or track_number >= len(tracks):
-        raise ValueError(f"track_number {track_number} is out of range for the provided tracks.")
-
-    # Unpack the specified track
-    pix_ids, times, brightnesses = tracks[track_number]
-    
-    # Ensure times and brightnesses have the same length
+    if not (0 <= track_number < len(tracks)):
+        raise ValueError(f"track_number {track_number} is out of range.")
+    _, times, brightnesses = tracks[track_number]
     if len(times) != len(brightnesses):
-        raise ValueError("Length mismatch: 'times' and 'brightnesses' must be the same length.")
-    
-    # Identify unique timestamps and sort them
+        raise ValueError("Length mismatch: 'times' and 'brightnesses' must match.")
+
     unique_times = sorted(set(times))
-    
-    # Compute median flux at each timestamp
-    median_flux = []
-    for t in unique_times:
-        # Collect brightnesses at time t
-        b_at_t = [b for tt, b in zip(times, brightnesses) if tt == t]
-        median_flux.append(np.median(b_at_t))
-    
-    # Plotting
-    plt.figure(figsize=(10, 4))
-    plt.plot(unique_times, median_flux, linestyle='-')
+    med_brightness = [
+        np.median([b for t_, b in zip(times, brightnesses) if t_ == t])
+        for t in unique_times
+    ]
+
+    plt.figure(figsize=(10,4))
+    plt.plot(unique_times, med_brightness, linestyle='-')
     plt.xlabel("Time")
-    plt.ylabel("Median Flux")
-    plt.title(f"Median-Flux Light Curve for Track {track_number}")
+    plt.ylabel("Brightness (MHz)")
+    plt.title(f"Median-Brightness Light Curve for Track {track_number}")
     plt.grid(True)
     plt.tight_layout()
     plt.show()
 
+    mean_bright = average_lightcurve_brightness(tracks, track_number)
+    print(f"Track {track_number} overall mean brightness: {mean_bright:.3f} MHz")
 
-# Example usage (commented out; replace with actual 'tracks' data when available):
-# tracks = [
-#     # Example track: [[pix_ids...], [times...], [brightnesses...]]
-#     ([1, 2, 3, 1, 2], [0.0, 0.0, 0.0, 1.0, 1.0], [10.0, 5.0, 2.0, 8.0, 3.0]),
-#     # Additional tracks...
-# ]
-# plot_median_flux_light_curve(tracks)
+
+
+def plot_binned_median_flux_light_curve(tracks, track_number=0, time_bin_size=0.5):
+    """
+    Plots binned median‐brightness light curve and prints overall mean brightness.
+    """
+    if not (0 <= track_number < len(tracks)):
+        raise ValueError(f"track_number {track_number} is out of range.")
+    _, times, brightnesses = tracks[track_number]
+    times = np.asarray(times)
+    brightnesses = np.asarray(brightnesses)
+    if times.shape != brightnesses.shape:
+        raise ValueError("Length mismatch: 'times' and 'brightnesses' must match.")
+
+    t_min, t_max = times.min(), times.max()
+    bins = np.arange(t_min, t_max + time_bin_size, time_bin_size)
+    idx = np.digitize(times, bins)
+    centers, medians = [], []
+    for i in range(1, len(bins)):
+        mask = idx == i
+        if not mask.any(): 
+            continue
+        centers.append((bins[i-1] + bins[i]) / 2)
+        medians.append(np.median(brightnesses[mask]))
+
+    plt.figure(figsize=(10,4))
+    plt.plot(centers, medians, linestyle='-')
+    plt.xlabel("Time")
+    plt.ylabel("Brightness (MHz)")
+    plt.title(f"Binned Median-Brightness Light Curve (Δt={time_bin_size}) for Track {track_number}")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    mean_bright = average_lightcurve_brightness(tracks, track_number)
+    print(f"Track {track_number} overall mean brightness: {mean_bright:.3f} MHz")
+    
+def save_tracks_hits(run_number, output_file):
+    """
+    Processes a given run with track_sorter and writes every hit in each track
+    as a row in a text file with columns: track_id, pixel_id, time[s], brightness.
+
+    Parameters:
+    - run_number: int or str, the run identifier
+    - output_file: str, path to the output .txt file
+    """
+    # Build neighbor list
+    typed_nn_pix = get_typed_nn_pix(5)
+
+    # Read run data
+    pix_arr, time_arr, bright_arr = read_single_run_utc_cut(run_number)
+
+    # Detect tracks
+    tracks, _ = track_sorter(pix_arr, time_arr, bright_arr, typed_nn_pix)
+
+    # Write out hits
+    with open(output_file, 'w') as f:
+        # Header
+        f.write("# track_id\tpixel_id\ttime[s]\tbrightness\n")
+        # Loop tracks and hits
+        for tid, tr in enumerate(tracks):
+            pix_list = tr[0]
+            time_list = tr[1]
+            bright_list = tr[2]
+            for p, t, b in zip(pix_list, time_list, bright_list):
+                f.write(f"{tid}\t{int(p)}\t{t:.6f}\t{b:.6f}\n")
+
+    print(f"Saved {sum(len(tr[0]) for tr in tracks)} hits from {len(tracks)} tracks to '{output_file}'")
 
