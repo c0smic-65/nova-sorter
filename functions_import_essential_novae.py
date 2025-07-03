@@ -459,7 +459,7 @@ def plot_brightness_in_trackly(tracks):
             "brightness": "Avg Brightness [MHz]"
         },
         title="FlashCam: Average Brightness per Pixel",
-        width=600, height=600
+        width=600, height=400
     )
     fig.update_traces(marker_symbol="hexagon", marker_size=13)
     fig.update_layout(
